@@ -125,6 +125,7 @@ void DisplaySettingsPage::finish()
 void DisplaySettingsPage::settingsFromUI(DisplaySettings &displaySettings) const
 {
     displaySettings.m_displayLineNumbers = m_d->m_page->displayLineNumbers->isChecked();
+    displaySettings.m_displayMiniMap = m_d->m_page->displayMiniMap->isChecked();
     displaySettings.m_textWrapping = m_d->m_page->enableTextWrapping->isChecked();
     displaySettings.m_showWrapColumn = m_d->m_page->showWrapColumn->isChecked();
     displaySettings.m_wrapColumn = m_d->m_page->wrapColumn->value();
@@ -142,6 +143,7 @@ void DisplaySettingsPage::settingsToUI()
 {
     const DisplaySettings &displaySettings = m_d->m_displaySettings;
     m_d->m_page->displayLineNumbers->setChecked(displaySettings.m_displayLineNumbers);
+    m_d->m_page->displayMiniMap->setChecked(displaySettings.m_displayMiniMap);
     m_d->m_page->enableTextWrapping->setChecked(displaySettings.m_textWrapping);
     m_d->m_page->showWrapColumn->setChecked(displaySettings.m_showWrapColumn);
     m_d->m_page->wrapColumn->setValue(displaySettings.m_wrapColumn);

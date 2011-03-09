@@ -92,6 +92,8 @@
 #include <QtGui/QInputDialog>
 #include <QtGui/QMenu>
 
+#include <math.h>
+
 //#define DO_FOO
 
 using namespace TextEditor;
@@ -183,6 +185,9 @@ BaseTextEditorWidget::BaseTextEditorWidget(QWidget *parent)
 {
     d = new BaseTextEditorPrivate;
     d->q = this;
+    d->m_miniMapScaleRatio = 0.2;
+    d->m_miniMapImage = new QImage();
+    d->m_miniMapSize = rect();
     d->m_extraArea = new TextEditExtraArea(this);
     d->m_extraArea->setMouseTracking(true);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
@@ -212,6 +217,7 @@ BaseTextEditorWidget::BaseTextEditorWidget(QWidget *parent)
     connect(this, SIGNAL(cursorPositionChanged()), this, SLOT(slotCursorPositionChanged()));
     connect(this, SIGNAL(updateRequest(QRect, int)), this, SLOT(slotUpdateRequest(QRect, int)));
     connect(this, SIGNAL(selectionChanged()), this, SLOT(slotSelectionChanged()));
+    connect(verticalScrollBar(), SIGNAL(valueChanged(int)), extraArea(), SLOT(update()));
 
 //     (void) new QShortcut(tr("CTRL+L"), this, SLOT(centerCursor()), 0, Qt::WidgetShortcut);
 //     (void) new QShortcut(tr("F9"), this, SLOT(slotToggleMark()), 0, Qt::WidgetShortcut);
@@ -2230,6 +2236,18 @@ bool BaseTextEditorWidget::lineNumbersVisible() const
     return d->m_lineNumbersVisible;
 }
 
+void BaseTextEditorWidget::setMiniMapVisible(bool b)
+{
+    d->m_miniMapVisible = b;
+    slotUpdateExtraAreaWidth();
+}
+
+bool BaseTextEditorWidget::miniMapVisible() const
+{
+    return d->m_miniMapVisible;
+}
+
+
 void BaseTextEditorWidget::setMarksVisible(bool b)
 {
     d->m_marksVisible = b;
@@ -3590,6 +3608,13 @@ int BaseTextEditorWidget::extraAreaWidth(int *markWidthPtr) const
 
     if (d->m_codeFoldingVisible)
         space += foldBoxWidth(fm);
+
+    // allocate some space for the minimap
+    if (d->m_miniMapVisible) { 
+        space += d->miniMapWidth();
+    }
+
+
     return space;
 }
 
@@ -3648,8 +3673,13 @@ void BaseTextEditorWidget::extraAreaPaintEvent(QPaintEvent *e)
     if (d->m_marksVisible)
         markWidth += fm.lineSpacing();
 
+    int miniMapWidth = 0;
+    if (d->m_miniMapVisible)
+        miniMapWidth = d->miniMapWidth();
+
+
     const int collapseColumnWidth = d->m_codeFoldingVisible ? foldBoxWidth(fm): 0;
-    const int extraAreaWidth = d->m_extraArea->width() - collapseColumnWidth;
+    const int extraAreaWidth = extraArea()->width() - collapseColumnWidth;
 
     painter.fillRect(e->rect(), pal.color(QPalette::Base));
     painter.fillRect(e->rect().intersected(QRect(0, 0, extraAreaWidth, INT_MAX)),
@@ -3708,7 +3738,7 @@ void BaseTextEditorWidget::extraAreaPaintEvent(QPaintEvent *e)
 
             if (TextBlockUserData *userData = static_cast<TextBlockUserData*>(block.userData())) {
                 if (d->m_marksVisible) {
-                    int xoffset = 0;
+                    int xoffset = miniMapWidth;
                     foreach (ITextMark *mrk, userData->marks()) {
                         int x = 0;
                         int radius = fmLineSpacing - 1;
@@ -3803,6 +3833,91 @@ void BaseTextEditorWidget::extraAreaPaintEvent(QPaintEvent *e)
 
         block = nextVisibleBlock;
         blockNumber = nextVisibleBlockNumber;
+    }
+
+    // minimap painting routine
+    if (d->m_miniMapVisible) {
+        float scaleRatio = d->m_miniMapScaleRatio;
+
+        int panelWidth = miniMapWidth; // adapt dynamicaly if the applicationwindow's resized
+        float lineHeight = fmLineSpacing * scaleRatio;
+        QRect mmRect = rect();
+        mmRect.setWidth(panelWidth);
+
+        int scrollValue = verticalScrollBar()->value();
+        int scrollMax = verticalScrollBar()->maximum();
+        int lineCount = doc->lineCount();
+
+        float mmDocHeight = lineCount * lineHeight;
+        float mmViewportHeight = ( mmDocHeight  >= height() ) ? height() : mmDocHeight;
+        float mmWindowHeight = height() / fmLineSpacing * lineHeight;
+        float mmScrollHeight = mmDocHeight - mmViewportHeight;
+
+        float scrollRatio = 1.0 * scrollValue / scrollMax;
+        float yOffset = scrollRatio * mmScrollHeight;
+
+        if (yOffset < 0 || isnan(yOffset)) yOffset = 0;
+
+        int startLine = yOffset / lineHeight;
+        int endLine = startLine + height() / lineHeight;
+
+        if (endLine > doc->lineCount()) {
+            endLine = doc->lineCount();
+        }
+
+        float scrollBy = yOffset - (startLine * lineHeight);
+        int offset = 0;
+
+        // use cached image as long as no significant parts were changed
+        if (d->m_miniMapVerticalValue != verticalScrollBar()->value() || d->m_miniMapSize != mmRect) {
+            // allocate a new image with an appropriate size
+            // if the application was resized
+            if (d->m_miniMapSize != mmRect) {
+                delete d->m_miniMapImage;
+                d->m_miniMapImage = new QImage(mmRect.width(), mmRect.height(), QImage::Format_ARGB32);
+            }
+
+            d->m_miniMapSize = mmRect;
+            d->m_miniMapVerticalValue = verticalScrollBar()->value();
+
+            QPainter mmPainter(d->m_miniMapImage);
+            mmPainter.setFont(font());
+            mmPainter.fillRect(mmRect, pal.color(QPalette::Base));
+
+            QTextBlock currBlock = doc->findBlockByLineNumber(startLine);
+            for (uint j = 0; currBlock.firstLineNumber() <= endLine; ++j) {
+                if (!currBlock.isValid())
+                    break;
+
+                mmPainter.translate(mmRect.x(), (j - offset) * lineHeight - scrollBy);
+                mmPainter.scale(scaleRatio, scaleRatio);
+
+                // skip blocks if invisible
+                if (!currBlock.isVisible()) {
+                    currBlock = currBlock.next();
+                    ++offset;
+                    continue;
+                }
+
+                mmPainter.drawText(0, fm.height(), panelWidth / scaleRatio, rect().height() / scaleRatio, Qt::AlignLeft, currBlock.text());
+                mmPainter.resetTransform();
+                currBlock = currBlock.next();
+            }
+
+            // paint the viewport area
+            QColor color("#5d5d6d");
+            color.setAlpha( 50 );
+
+            mmPainter.fillRect( mmRect.x(), 0, panelWidth, scrollRatio * ( mmViewportHeight - mmWindowHeight ), QBrush( color ) );
+            mmPainter.fillRect( mmRect.x(), ( scrollRatio * ( mmViewportHeight - mmWindowHeight ) + mmWindowHeight ), panelWidth, height(), QBrush( color ) );
+
+            color.setAlpha( 5 );
+            mmPainter.fillRect( mmRect.x(), scrollRatio * ( mmViewportHeight - mmWindowHeight ), panelWidth, mmWindowHeight, QBrush( color ) );
+
+            mmPainter.end();
+        }
+
+        painter.drawImage(rect(), *d->m_miniMapImage, rect());
     }
 }
 
@@ -4214,6 +4329,27 @@ void BaseTextEditorWidget::extraAreaMouseEvent(QMouseEvent *e)
 
     int markWidth;
     extraAreaWidth(&markWidth);
+    int miniMapWidth = d->m_miniMapVisible ? d->miniMapWidth() : 0;
+
+    bool inMarkArea = e->pos().x() <= (markWidth + miniMapWidth) && e->pos().x() > miniMapWidth;
+
+    // calculate if the mouse is inside the minimap window
+    int scrollValue = verticalScrollBar()->value();
+    int scrollMax = verticalScrollBar()->maximum();
+    float scrollRatio = 1.0 * scrollValue / scrollMax;
+    int fmLineSpacing = fontMetrics().lineSpacing();
+    int lineCount = document()->lineCount();
+    float lineHeight = fmLineSpacing * d->m_miniMapScaleRatio;
+
+    float mmDocHeight = lineCount * lineHeight;
+    float mmViewportHeight = ( mmDocHeight  >= height() ) ? height() : mmDocHeight;
+    float mmWindowHeight = height() / fmLineSpacing * lineHeight;
+    float mmWindowYMin = scrollRatio * ( mmViewportHeight - mmWindowHeight );
+
+    bool inMiniMapWindow = false;
+    if ( e->y() >= mmWindowYMin && e->y() <= mmWindowYMin + mmWindowHeight && e->x() <= miniMapWidth ) {
+        inMiniMapWindow = true;
+    }
 
     if (d->m_codeFoldingVisible
         && e->type() == QEvent::MouseMove && e->buttons() == 0) { // mouse tracking
@@ -4254,15 +4390,20 @@ void BaseTextEditorWidget::extraAreaMouseEvent(QMouseEvent *e)
                     toggleBlockVisible(c);
                     d->moveCursorVisible(false);
                 }
-            } else if (d->m_lineNumbersVisible && e->pos().x() > markWidth) {
+            } else if (d->m_marksVisible && !inMarkArea && !inMiniMapWindow) {
                 QTextCursor selection = cursor;
                 selection.setVisualNavigation(true);
                 d->extraAreaSelectionAnchorBlockNumber = selection.blockNumber();
                 selection.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
                 selection.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
                 setTextCursor(selection);
-            } else {
+            } else if (inMarkArea) {
                 d->extraAreaToggleMarkBlockNumber = cursor.blockNumber();
+            } else if (inMiniMapWindow) {
+                d->m_extraArea->setCursor(Qt::ClosedHandCursor);
+                d->m_miniMapYDiff = e->y() - mmWindowYMin;
+                d->m_miniMapXDiff = e->x();
+                d->m_miniMapInDragEvent = true;
             }
         } else if (d->m_marksVisible && e->button() == Qt::RightButton) {
             QMenu * contextMenu = new QMenu(this);
@@ -4307,7 +4448,23 @@ void BaseTextEditorWidget::extraAreaMouseEvent(QMouseEvent *e)
                 emit editor()->markRequested(editor(), line);
             }
         }
+    } else if (e->type() == QEvent::MouseButtonRelease) {
+        if (d->m_miniMapInDragEvent) {
+            d->m_extraArea->setCursor(Qt::OpenHandCursor);
+            d->m_miniMapInDragEvent = false;
+        }
+    } else if (e->type() == QEvent::MouseMove && d->m_miniMapInDragEvent) {
+        verticalScrollBar()->setValue(
+                ( e->y() - d->m_miniMapYDiff ) / ( mmViewportHeight - mmWindowHeight ) * verticalScrollBar()->maximum()
+                );
+        extraArea()->update();
+    } else if (e->type() == QEvent::MouseMove) {
+        if (inMiniMapWindow && miniMapVisible())
+            d->m_extraArea->setCursor(Qt::OpenHandCursor);
+        else
+            d->m_extraArea->setCursor(Qt::ArrowCursor);
     }
+
 }
 
 void BaseTextEditorWidget::ensureCursorVisible()
@@ -5384,6 +5541,8 @@ void BaseTextEditorWidget::setDisplaySettings(const DisplaySettings &ds)
     setHighlightCurrentLine(ds.m_highlightCurrentLine);
     setRevisionsVisible(ds.m_markTextChanges);
     setCenterOnScroll(ds.m_centerCursorOnScroll);
+    setMiniMapVisible(ds.m_displayMiniMap);
+
 
     if (d->m_displaySettings.m_visualizeWhitespace != ds.m_visualizeWhitespace) {
         if (SyntaxHighlighter *highlighter = baseTextDocument()->syntaxHighlighter())

@@ -422,6 +422,7 @@ CPPEditorWidget::CPPEditorWidget(QWidget *parent)
     setMarksVisible(true);
     setCodeFoldingSupported(true);
     setIndenter(new CppQtStyleIndenter);
+    setMiniMapVisible(true);
     setAutoCompleter(new CppAutoCompleter);
 
     baseTextDocument()->setSyntaxHighlighter(new CppHighlighter);

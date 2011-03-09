@@ -37,6 +37,7 @@
 #include <QtCore/QString>
 
 static const char * const displayLineNumbersKey = "DisplayLineNumbers";
+static const char * const displayMiniMapKey = "DisplayMiniMap";
 static const char * const textWrappingKey = "TextWrapping";
 static const char * const showWrapColumnKey = "ShowWrapColumn";
 static const char * const wrapColumnKey = "WrapColumn";
@@ -54,6 +55,7 @@ namespace TextEditor {
 
 DisplaySettings::DisplaySettings() :
     m_displayLineNumbers(true),
+    m_displayMiniMap(true),
     m_textWrapping(false),
     m_showWrapColumn(false),
     m_wrapColumn(80),
@@ -75,6 +77,7 @@ void DisplaySettings::toSettings(const QString &category, QSettings *s) const
         group.insert(0, category);
     s->beginGroup(group);
     s->setValue(QLatin1String(displayLineNumbersKey), m_displayLineNumbers);
+    s->setValue(QLatin1String(displayMiniMapKey), m_displayMiniMap);
     s->setValue(QLatin1String(textWrappingKey), m_textWrapping);
     s->setValue(QLatin1String(showWrapColumnKey), m_showWrapColumn);
     s->setValue(QLatin1String(wrapColumnKey), m_wrapColumn);
@@ -99,6 +102,7 @@ void DisplaySettings::fromSettings(const QString &category, const QSettings *s)
     *this = DisplaySettings(); // Assign defaults
 
     m_displayLineNumbers = s->value(group + QLatin1String(displayLineNumbersKey), m_displayLineNumbers).toBool();
+    m_displayMiniMap = s->value( group + QLatin1String(displayMiniMapKey), m_displayMiniMap).toBool();
     m_textWrapping = s->value(group + QLatin1String(textWrappingKey), m_textWrapping).toBool();
     m_showWrapColumn = s->value(group + QLatin1String(showWrapColumnKey), m_showWrapColumn).toBool();
     m_wrapColumn = s->value(group + QLatin1String(wrapColumnKey), m_wrapColumn).toInt();
@@ -115,6 +119,7 @@ void DisplaySettings::fromSettings(const QString &category, const QSettings *s)
 bool DisplaySettings::equals(const DisplaySettings &ds) const
 {
     return m_displayLineNumbers == ds.m_displayLineNumbers
+        && m_displayMiniMap == ds.m_displayMiniMap
         && m_textWrapping == ds.m_textWrapping
         && m_showWrapColumn == ds.m_showWrapColumn
         && m_wrapColumn == ds.m_wrapColumn

@@ -178,6 +178,9 @@ public:
     void setLineNumbersVisible(bool b);
     bool lineNumbersVisible() const;
 
+    void setMiniMapVisible(bool b);
+    bool miniMapVisible() const;
+
     void setMarksVisible(bool b);
     bool marksVisible() const;
 

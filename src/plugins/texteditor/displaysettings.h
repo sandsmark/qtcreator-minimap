@@ -51,6 +51,7 @@ public:
     void fromSettings(const QString &category, const QSettings *s);
 
     bool m_displayLineNumbers;
+    bool m_displayMiniMap;
     bool m_textWrapping;
     bool m_showWrapColumn;
     int m_wrapColumn;

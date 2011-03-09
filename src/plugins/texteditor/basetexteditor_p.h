@@ -237,6 +237,17 @@ public:
     void updateMarksLineNumber();
     void updateMarksBlock(const QTextBlock &block);
     uint m_marksVisible : 1;
+    uint m_miniMapVisible : 1;
+    float m_miniMapScaleRatio;
+    int m_miniMapYDiff;
+    int m_miniMapXDiff;
+    bool m_miniMapInDragEvent;
+    int m_miniMapVerticalValue;
+    QRect m_miniMapSize;
+    QImage *m_miniMapImage;
+
+    inline uint miniMapWidth() const { return (q->rect().width() - q->extraArea()->width()) * m_miniMapScaleRatio; }
+
     uint m_codeFoldingVisible : 1;
     uint m_codeFoldingSupported : 1;
     uint m_revisionsVisible : 1;
